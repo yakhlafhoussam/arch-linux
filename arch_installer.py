@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 
 import os
@@ -6,96 +5,91 @@ import shutil
 import subprocess
 import sys
 
+TARGET_PARTITION = "/dev/nvme0n1p6"
 
-def run_command(command):
-    return subprocess.run(command, check=False).returncode
+
+def run(command):
+    print(f"\n$ {' '.join(command)}")
+    return subprocess.run(command, check=False)
 
 
 def check_root():
     if os.geteuid() != 0:
-        print("Run this script as root:")
-        print("  sudo python arch_installer.py")
+        print("Please run:")
+        print("sudo python arch_installer.py")
         sys.exit(1)
 
 
 def check_archinstall():
     if shutil.which("archinstall") is None:
         print("archinstall is not installed.")
-        print("Connect to the internet and run:")
-        print("  pacman -Sy archinstall")
+        print("Run:")
+        print("pacman -Sy archinstall")
         sys.exit(1)
 
 
-def check_live_environment():
-    if not os.path.exists("/run/archiso"):
-        print("This script should be run from Arch Linux Live USB.")
+def check_partition():
+    if not os.path.exists(TARGET_PARTITION):
+        print(f"ERROR: {TARGET_PARTITION} does not exist.")
+        print("\nAvailable partitions:")
+        run(["lsblk", "-o", "NAME,SIZE,FSTYPE,TYPE,MOUNTPOINTS"])
         sys.exit(1)
 
 
-def show_disks():
-    print("\nAvailable disks:\n")
+def show_partition():
+    print("\n======================================")
+    print("        HYK ARCH INSTALLER")
+    print("======================================")
 
-    subprocess.run([
+    print("\nTarget partition:")
+    run([
         "lsblk",
-        "-d",
-        "-o", "NAME,SIZE,MODEL,TYPE"
+        "-o",
+        "NAME,SIZE,FSTYPE,TYPE,MOUNTPOINTS",
+        TARGET_PARTITION
     ])
 
-    print()
+    print("\nWARNING!")
+    print(f"Arch Linux will be installed on {TARGET_PARTITION}.")
+    print("The filesystem on this partition may be formatted.")
+    print("Make sure this partition contains NO important data.")
 
 
-def choose_disk():
-    show_disks()
+def confirm():
+    expected = f"INSTALL ARCH ON {TARGET_PARTITION}"
 
-    disk = input(
-        "Enter the disk to install Arch on "
-        "(example: /dev/nvme0n1): "
+    answer = input(
+        f"\nType exactly:\n{expected}\n\n> "
     ).strip()
 
-    if not disk.startswith("/dev/"):
-        print("Invalid disk path.")
-        sys.exit(1)
-
-    if not os.path.exists(disk):
-        print("Disk does not exist.")
-        sys.exit(1)
-
-    print("\nWARNING: The selected disk may be erased.")
-    print(f"Selected disk: {disk}")
-
-    confirmation = input(
-        f"Type ERASE {disk} to continue: "
-    ).strip()
-
-    if confirmation != f"ERASE {disk}":
-        print("Installation cancelled.")
+    if answer != expected:
+        print("\nInstallation cancelled.")
         sys.exit(0)
 
-    return disk
 
+def start_archinstall():
+    print("\nStarting archinstall...")
+    print("--------------------------------------")
 
-def start_installer():
-    check_root()
-    check_archinstall()
-    check_live_environment()
+    result = run(["archinstall"])
 
-    print("=== Arch Linux Installer ===")
-
-    disk = choose_disk()
-
-    print("\nStarting the official Arch installer...")
-    print("Choose your disk and partitioning options carefully.")
-    print("Continue through the installer to select your desktop.")
-
-    result = run_command(["archinstall"])
-
-    if result == 0:
-        print("\nArchinstall finished.")
-        print("Follow its instructions to reboot.")
+    if result.returncode == 0:
+        print("\nArchinstall finished successfully.")
     else:
         print("\nArchinstall exited with an error.")
-        print("Check the installer logs before trying again.")
+        sys.exit(result.returncode)
+
+
+def main():
+    check_root()
+    check_archinstall()
+    check_partition()
+
+    show_partition()
+    confirm()
+
+    start_archinstall()
 
 
 if __name__ == "__main__":
-    start_installer()
+    main()
